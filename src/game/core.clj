@@ -4,26 +4,55 @@
   (:gen-class))
 
 (defn get-next-direction-gravity [[x y]]
-    [x (min 5 (+ y 0.1))])
+    [x (max -10 (- y 0.1))])
 
 (defn get-circle-game-object
-    ([] (get-circle-game-object [100 100] [-1 -1] 20))
-    ([position direction radius]
+    ([] (get-circle-game-object [100 100] [-1 -1] 20 [100 255 255]))
+    ([position direction radius] (get-circle-game-object [100 255 255]))
+    ([position direction radius color]
     {
         :position position
         :direction direction
         :radius radius
+        :color color
         :get-next-direction get-next-direction-gravity
         :id (gensym)
     }))
 
 (defn get-initial-state []
     [
-    (get-circle-game-object [100 100] [-1 -1] 20)
-    (get-circle-game-object [300 100] [1 -1] 20)
+    (get-circle-game-object [100 100] [-1 -1] 20 [100 255 255])
+    (get-circle-game-object [300 100] [1 -1] 20 [100 255 255])
     ])
     
 (defn square [x] (* x x))
+
+(defn dot-product [& vectors]
+    (apply + (apply (partial map *) vectors)))
+
+(defn scalar-vector-multiplication [s v]
+    (map (partial * s) v))
+
+(defn vector-plus [& vectors]
+    (apply (partial map +) vectors))
+
+(defn vector-minus [& vectors]
+    (apply (partial map -) vectors))
+
+(defn invert-y [[x y]]
+    [x (* -1 y)])    
+
+(def magnitude
+    (comp (fn [x] (Math/sqrt x)) (partial apply +) (partial map square)))
+
+(defn get-color-by-vector [[x y]]
+    [(mod x 256) (mod y 256) 255])
+
+(defn normal [p1 p2]
+    (let
+        [v (vector-minus p1 p2)
+        s (/ 1 (Math/sqrt (apply + (map square v))))]
+        (scalar-vector-multiplication s v)))
 
 (defn collision? [& circles]
     (<=
@@ -46,32 +75,12 @@
             ]))
     
 
-(defn move [position direction]
-    (map + position direction))
+(defn move [position direction radius]
+    (map
+        (comp (partial min (- 500 radius)) (partial max radius) +)
+        position direction))
 
-(defn dot-product [& vectors]
-    (apply + (apply (partial map *) vectors)))
 
-(defn scalar-vector-multiplication [s v]
-    (map (partial * s) v))
-
-(defn vector-plus [& vectors]
-    (apply (partial map +) vectors))
-
-(defn vector-minus [& vectors]
-    (apply (partial map -) vectors))
-
-(defn invert-y [[x y]]
-    [x (* -1 y)])    
-
-(def magnitude
-    (comp (fn [x] (Math/sqrt x)) (partial apply +) (partial map square)))
-
-(defn normal [p1 p2]
-    (let
-        [v (vector-minus p1 p2)
-        s (/ 1 (Math/sqrt (apply + (map square v))))]
-        (scalar-vector-multiplication s v)))
 
 (defn collide [p1 p2 v1 v2]
     (let
@@ -118,12 +127,14 @@
         new-direction
             (get-next-direction-gravity
                 (bounce-edges (:position game-object) direction-after-collision (:radius game-object)))
+        new-position (move (:position game-object) new-direction (:radius game-object))
         ]
     (merge
         game-object
         {
-            :position (move (:position game-object) new-direction)
+            :position new-position
             :direction new-direction
+            :color (get-color-by-vector new-position)
         })))
 
 (defn setup []
@@ -137,11 +148,11 @@
     (let [without-small-magnitue (filter (comp (partial < 0.5) magnitude :direction) state)]
     (map (partial update-game-object without-small-magnitue) without-small-magnitue)))
 
-(defn draw-circle [[x y] radius]
+(defn draw-circle [[x y] radius color]
     (let [draw-radius (* 2 radius)]
         (q/with-translation [0 0])
-        (q/fill 100 255 255)
-        (q/ellipse x y draw-radius draw-radius)))
+        (apply q/fill color)
+        (q/ellipse x (- 500 y) draw-radius draw-radius)))
     
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
@@ -149,7 +160,7 @@
   (dorun
     (map
         (fn [circle]
-            (apply draw-circle (map circle [:position :radius])))
+            (apply draw-circle (map circle [:position :radius :color])))
         state)))
 
 (defn -main [& args]
